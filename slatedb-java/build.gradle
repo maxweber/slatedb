@@ -41,6 +41,36 @@ def slatedbJextractLibrary = jextract.libraries.create('slatedb') {
 }
 
 // ==============================================================================
+// Post-process jextract output: replace System.loadLibrary with NativeLoader
+// so the JAR can bundle and auto-extract the native library at runtime.
+// ==============================================================================
+tasks.named('slatedbJextractGenerateBindings') {
+    doLast {
+        def nativeJava = fileTree(outputs.files.asPath).matching {
+            include '**/Native.java'
+        }.singleFile
+        def text = nativeJava.getText('UTF-8')
+        def updated = text.replace(
+            'System.loadLibrary("slatedb_c");',
+            'io.slatedb.NativeLoader.load();'
+        )
+        if (updated == text) {
+            throw new GradleException("Failed to patch Native.java: System.loadLibrary call not found")
+        }
+        nativeJava.setText(updated, 'UTF-8')
+    }
+}
+
+// ==============================================================================
+// Copy native library into resources for JAR bundling.
+// ==============================================================================
+tasks.register('copyNativeLib', Copy) {
+    from layout.projectDirectory.file('../target/release/libslatedb_c.so')
+    into layout.buildDirectory.dir('resources/main/META-INF/native/linux-x86_64')
+}
+processResources.dependsOn copyNativeLib
+
+// ==============================================================================
 // Standard Java library configuration below.
 // ==============================================================================
 
